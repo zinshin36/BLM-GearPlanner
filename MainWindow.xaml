@@ -1,0 +1,40 @@
+<Grid Margin="20">
+    <StackPanel>
+
+        <TextBlock Text="Black Mage Gear Planner" FontSize="20" Margin="0,0,0,20"/>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Crit:" Width="120"/>
+            <TextBox Name="CritBox" Width="100" Text="200"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Direct Hit:" Width="120"/>
+            <TextBox Name="DhBox" Width="100" Text="150"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Determination:" Width="120"/>
+            <TextBox Name="DetBox" Width="100" Text="100"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Spell Speed:" Width="120"/>
+            <TextBox Name="SpsBox" Width="100" Text="150"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+            <TextBlock Text="Head Gear:" Width="120"/>
+            <ComboBox Name="HeadDropdown" Width="250" SelectionChanged="Gear_SelectionChanged"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Body Gear:" Width="120"/>
+            <ComboBox Name="BodyDropdown" Width="250" SelectionChanged="Gear_SelectionChanged"/>
+        </StackPanel>
+
+        <Button Content="Simulate DPS" Margin="0,20,0,0" Width="150" Click="Simulate_Click"/>
+
+        <TextBlock Name="ResultText" FontSize="16" Margin="0,20,0,0"/>
+    </StackPanel>
+</Grid>
