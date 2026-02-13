@@ -6,11 +6,12 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 
-namespace BLM_GearPlanner
+namespace BLMRotationSim
 {
     public partial class MainWindow : Window
     {
         Dictionary<string, List<GearPiece>> gearPool = new();
+
         public MainWindow()
         {
             InitializeComponent();
@@ -23,6 +24,7 @@ namespace BLM_GearPlanner
             string json = File.ReadAllText(path);
             gearPool = JsonSerializer.Deserialize<Dictionary<string, List<GearPiece>>>(json);
 
+            // Fill dropdowns
             HeadDropdown.ItemsSource = gearPool["Head"].Select(g => g.Name);
             HeadDropdown.SelectedIndex = 0;
 
@@ -54,12 +56,12 @@ namespace BLM_GearPlanner
 
             double dps = RotationSimulator.CalculateDPS(crit, dh, det, sps);
 
-            ResultText.Text = $"Estimated DPS Score: {dps:F2}\nBest Gear: {selectedGear[0].Name}, {selectedGear[1].Name}";
+            ResultText.Text = $"Estimated DPS: {dps:F2}\nGear: {selectedGear[0].Name}, {selectedGear[1].Name}";
         }
 
         private void Gear_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Optional: Could auto-update DPS here when changing gear
+            // Optional: auto-update DPS on change
         }
     }
 
