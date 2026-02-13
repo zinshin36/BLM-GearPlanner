@@ -1,10 +1,10 @@
 {
   "Head": [
-    {"Name":"Savage Head", "Crit":180, "DirectHit":120, "Determination":0, "SpellSpeed":150},
-    {"Name":"Tome Head", "Crit":150, "DirectHit":160, "Determination":80, "SpellSpeed":0}
+    {"Name":"Savage Head","Crit":180,"DirectHit":120,"Determination":0,"SpellSpeed":150},
+    {"Name":"Tome Head","Crit":150,"DirectHit":160,"Determination":80,"SpellSpeed":0}
   ],
   "Body": [
-    {"Name":"Savage Body", "Crit":220, "DirectHit":150, "Determination":0, "SpellSpeed":180},
-    {"Name":"Tome Body", "Crit":180, "DirectHit":200, "Determination":100, "SpellSpeed":0}
+    {"Name":"Savage Body","Crit":220,"DirectHit":150,"Determination":0,"SpellSpeed":180},
+    {"Name":"Tome Body","Crit":180,"DirectHit":200,"Determination":100,"SpellSpeed":0}
   ]
 }
