@@ -1,7 +1,7 @@
 using System;
 using System.Windows;
 
-namespace BLM_RotationSim
+namespace BLMRotationSim
 {
     public partial class App : Application
     {
