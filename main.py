@@ -1,23 +1,32 @@
+import sys
 import json
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox, QHBoxLayout
 
+# --- Logging function ---
 LOG_FILE = "runtime_log.txt"
-
 def log(msg):
     with open(LOG_FILE, "a") as f:
         f.write(msg + "\n")
 
-# Load gear data
-data_path = Path(os.path.join(os.path.dirname(__file__), "data", "gear.json"))
-if not data_path.exists():
-    log("gear.json not found!")
-    raise FileNotFoundError("gear.json not found!")
+# --- Determine base path (works in PyInstaller EXE too) ---
+if getattr(sys, 'frozen', False):
+    # Running as EXE
+    base_path = Path(sys._MEIPASS)
+else:
+    # Running as script
+    base_path = Path(__file__).parent
 
-with open(data_path) as f:
+data_path = base_path / "data" / "gear.json"
+
+# --- Load gear data ---
+if not data_path.exists():
+    raise FileNotFoundError(f"gear.json not found at {data_path}")
+
+with open(data_path, "r") as f:
     gear = json.load(f)
 
-# Calculate DPS
+# --- DPS calculator ---
 def calculate_dps(crit, dh, det, sps):
     BaseSub = 400
     LevelDiv = 1900
@@ -32,20 +41,19 @@ def calculate_dps(crit, dh, det, sps):
     multiplier = detBonus*(1 + critRate*(critBonus-1))*(1 + dhRate*0.25)*spsBonus
     return potency/60 * multiplier
 
-# Best-in-slot selection
+# --- Best-in-slot selection ---
 def best_in_slot(slot_name, top_n=3):
     items = gear.get(slot_name, [])
     if not items:
         return []
-    # Sum stats for sorting
     sorted_items = sorted(items, key=lambda g: g["Crit"]+g["DirectHit"]+g["Determination"]+g["SpellSpeed"], reverse=True)
     return sorted_items[:top_n]
 
-# GUI
+# --- GUI ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BLM DPS Simulator (Full Slots + Alternatives)")
+        self.setWindowTitle("BLM DPS Simulator (Portable)")
 
         self.slots = ["Head", "Body", "Hands", "Legs", "Feet", "Accessories"]
         self.combos = {}
@@ -54,21 +62,18 @@ class MainWindow(QMainWindow):
         for slot in self.slots:
             label = QLabel(f"{slot} Gear (Top 3 options)")
             combo = QComboBox()
-
             top_items = best_in_slot(slot)
             if not top_items:
                 combo.addItem("No gear")
             else:
                 for g in top_items:
                     combo.addItem(g["Name"])
-                # Auto-select BIS
                 combo.setCurrentText(top_items[0]["Name"])
-
             layout.addWidget(label)
             layout.addWidget(combo)
             self.combos[slot] = combo
 
-        # Optional: Base stat config
+        # Base stat configuration
         config_layout = QHBoxLayout()
         self.configs = {}
         for stat in ["Crit", "DirectHit", "Determination", "SpellSpeed"]:
@@ -108,7 +113,6 @@ class MainWindow(QMainWindow):
                     for stat in total_stats:
                         total_stats[stat] += selected[stat]
                 else:
-                    log(f"No gear selected for slot {slot}, using BIS if available.")
                     bis_items = best_in_slot(slot)
                     if bis_items:
                         for stat in total_stats:
@@ -124,7 +128,7 @@ class MainWindow(QMainWindow):
             log(f"Simulation ERROR: {e}")
             QMessageBox.critical(self, "Error", f"Simulation failed:\n{e}")
 
-# Run app
+# --- Run app ---
 if __name__ == "__main__":
     import sys
     app = QApplication(sys.argv)
