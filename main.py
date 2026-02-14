@@ -1,179 +1,118 @@
 import sys
 import json
-import requests
 from pathlib import Path
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel
-
-# =====================================================
-# CONFIG
-# =====================================================
-
-API_SEARCH_URL = "https://xivapi.com/search"
-API_ITEM_URL = "https://xivapi.com/item"
-
-MIN_ILVL = 700      # Adjust when new raid tier launches
-MAX_ILVL = 999
-JOB_CATEGORY = "Caster"
-
-# =====================================================
-# PATH HANDLING (FULLY PORTABLE)
-# =====================================================
-
-if getattr(sys, 'frozen', False):
-    BASE_PATH = Path(sys.executable).parent
-else:
-    BASE_PATH = Path(__file__).parent
-
-GEAR_FILE = BASE_PATH / "current_tier.json"
-LOG_FILE = BASE_PATH / "runtime_log.txt"
-
-# =====================================================
-# LOGGING
-# =====================================================
-
-def log(msg):
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(msg + "\n")
-
-# =====================================================
-# XIVAPI SEARCH (GET ITEM IDS)
-# =====================================================
-
-def search_gear_ids():
-    log("Searching XIVAPI for caster gear...")
-
-    params = {
-        "indexes": "Item",
-        "filters": f"LevelItem>={MIN_ILVL},LevelItem<={MAX_ILVL},ClassJobCategory.Name_en={JOB_CATEGORY}",
-        "columns": "ID,Name,LevelItem,EquipSlotCategory.Name_en",
-        "limit": 200
-    }
-
-    response = requests.get(API_SEARCH_URL, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-
-    return data.get("Results", [])
-
-# =====================================================
-# FETCH FULL ITEM DATA
-# =====================================================
-
-def fetch_full_item(item_id):
-    response = requests.get(f"{API_ITEM_URL}/{item_id}", timeout=30)
-    response.raise_for_status()
-    return response.json()
-
-# =====================================================
-# PARSE STATS FROM ITEM
-# =====================================================
-
-def parse_stats(item_data):
-    stats = {
-        "Crit": 0,
-        "DirectHit": 0,
-        "Determination": 0,
-        "SpellSpeed": 0
-    }
-
-    for param in item_data.get("BaseParam", []):
-        name = param.get("BaseParam", {}).get("Name_en")
-        value = param.get("Value", 0)
-
-        if name == "Critical Hit":
-            stats["Crit"] = value
-        elif name == "Direct Hit Rate":
-            stats["DirectHit"] = value
-        elif name == "Determination":
-            stats["Determination"] = value
-        elif name == "Spell Speed":
-            stats["SpellSpeed"] = value
-
-    return stats
-
-# =====================================================
-# FETCH AND CACHE FULL GEAR DATA
-# =====================================================
-
-def fetch_and_cache_gear():
-    log("Fetching full gear data...")
-
-    basic_items = search_gear_ids()
-    full_gear = []
-
-    for item in basic_items:
-        try:
-            full_data = fetch_full_item(item["ID"])
-
-            stats = parse_stats(full_data)
-
-            gear_entry = {
-                "ID": item["ID"],
-                "Name": item["Name"],
-                "ItemLevel": item["LevelItem"],
-                "Slot": item.get("EquipSlotCategory", {}).get("Name_en"),
-                "MateriaSlots": full_data.get("MateriaSlotCount", 0),
-                "Stats": stats
-            }
-
-            full_gear.append(gear_entry)
-
-            log(f"Loaded: {gear_entry['Name']}")
-
-        except Exception as e:
-            log(f"Failed to load item {item.get('Name')} - {e}")
-
-    with open(GEAR_FILE, "w", encoding="utf-8") as f:
-        json.dump(full_gear, f, indent=2)
-
-    log(f"Saved {len(full_gear)} items to cache.")
-
-    return full_gear
-
-# =====================================================
-# LOAD OR FETCH
-# =====================================================
-
-def load_gear():
-    if GEAR_FILE.exists():
-        log("Loading cached gear...")
-        with open(GEAR_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        log("No cache found. Fetching from XIVAPI.")
-        return fetch_and_cache_gear()
-
-# =====================================================
-# GUI
-# =====================================================
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QComboBox, QCheckBox, QProgressBar
+from PySide6.QtCore import Qt
+from config import ILVL_WINDOW_DEFAULT, PRIORITY_MODES, THEMES
+from gear_cache import load_cache, refresh_gear_cache
+from tier_detector import detect_max_ilvl, filter_by_ilvl_window
+from brute_solver import solve_bis
 
 class MainWindow(QMainWindow):
-    def __init__(self, gear):
+    def __init__(self):
         super().__init__()
-        self.setWindowTitle("BLM BiS Engine - Phase 2")
+        self.setWindowTitle("BLM Perfect BiS Engine")
+        self.cache = load_cache() or {"gear": [], "max_ilvl":0, "theme":"Dark"}
+        self.max_ilvl = self.cache["max_ilvl"]
+        self.theme = self.cache.get("theme","Dark")
+        self.init_ui()
+        self.apply_theme()
 
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel(f"Loaded {len(gear)} gear items."))
-        layout.addWidget(QLabel("Stats + Materia slots extracted."))
-        layout.addWidget(QLabel("Ready for Materia Solver Phase."))
+    def init_ui(self):
+        main = QVBoxLayout()
+
+        # Max Ilvl label
+        self.label_ilvl = QLabel(f"Detected Max ILvl: {self.max_ilvl}")
+        main.addWidget(self.label_ilvl)
+
+        # Ilvl window slider
+        slider_layout = QHBoxLayout()
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(5)
+        self.slider.setMaximum(60)
+        self.slider.setValue(ILVL_WINDOW_DEFAULT)
+        self.slider.valueChanged.connect(self.update_window_label)
+        self.window_label = QLabel(f"Window: {self.slider.value()}")
+        slider_layout.addWidget(self.slider)
+        slider_layout.addWidget(self.window_label)
+        main.addLayout(slider_layout)
+
+        # Priority mode dropdown
+        self.priority_dropdown = QComboBox()
+        self.priority_dropdown.addItems(PRIORITY_MODES)
+        main.addWidget(self.priority_dropdown)
+
+        # Checkboxes
+        self.chk_relic = QCheckBox("Include Relic Weapons")
+        self.chk_pvp = QCheckBox("Exclude PvP Gear")
+        main.addWidget(self.chk_relic)
+        main.addWidget(self.chk_pvp)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.btn_refresh = QPushButton("Refresh Gear (Expansion)")
+        self.btn_refresh.clicked.connect(self.refresh_gear)
+        self.btn_calc = QPushButton("Recalculate BiS")
+        self.btn_calc.clicked.connect(self.run_solver)
+        self.btn_theme = QPushButton("Toggle Light/Dark")
+        self.btn_theme.clicked.connect(self.toggle_theme)
+        btn_layout.addWidget(self.btn_refresh)
+        btn_layout.addWidget(self.btn_calc)
+        btn_layout.addWidget(self.btn_theme)
+        main.addLayout(btn_layout)
+
+        # Progress and output
+        self.progress = QProgressBar()
+        main.addWidget(self.progress)
+        self.output_label = QLabel("Solver output will appear here")
+        main.addWidget(self.output_label)
 
         container = QWidget()
-        container.setLayout(layout)
+        container.setLayout(main)
         self.setCentralWidget(container)
 
-# =====================================================
-# MAIN
-# =====================================================
+    def update_window_label(self):
+        self.window_label.setText(f"Window: {self.slider.value()}")
 
-if __name__ == "__main__":
-    try:
-        gear = load_gear()
-    except Exception as e:
-        print("Fatal Error:", e)
-        log(f"FATAL ERROR: {e}")
-        sys.exit(1)
+    def refresh_gear(self):
+        self.output_label.setText("Refreshing gear cache...")
+        QApplication.processEvents()
+        self.cache["gear"], self.max_ilvl = refresh_gear_cache()
+        self.cache["max_ilvl"] = self.max_ilvl
+        self.label_ilvl.setText(f"Detected Max ILvl: {self.max_ilvl}")
+        self.output_label.setText(f"Loaded {len(self.cache['gear'])} gear items.")
 
+    def run_solver(self):
+        self.output_label.setText("Running solver...")
+        QApplication.processEvents()
+        window = self.slider.value()
+        filtered_gear = filter_by_ilvl_window(self.cache["gear"], self.max_ilvl, window)
+        priority = self.priority_dropdown.currentText()
+        best_build, best_dps = solve_bis(filtered_gear, priority)
+        if best_build:
+            out_text = f"Best DPS: {best_dps:.2f}\nGear:\n"
+            for piece in best_build:
+                out_text += f"{piece['Slot']}: {piece['Name']}\n"
+            self.output_label.setText(out_text)
+        else:
+            self.output_label.setText("No valid build found.")
+
+    def toggle_theme(self):
+        self.theme = "Light" if self.theme=="Dark" else "Dark"
+        self.apply_theme()
+        self.cache["theme"] = self.theme
+        Path("data/gear_cache.json").parent.mkdir(exist_ok=True)
+        with open("data/gear_cache.json","w") as f:
+            json.dump(self.cache,f,indent=2)
+
+    def apply_theme(self):
+        if self.theme=="Dark":
+            self.setStyleSheet("background-color:#121212;color:#FFFFFF;")
+        else:
+            self.setStyleSheet("background-color:#FFFFFF;color:#000000;")
+
+if __name__=="__main__":
     app = QApplication(sys.argv)
-    window = MainWindow(gear)
+    window = MainWindow()
     window.show()
     sys.exit(app.exec())
