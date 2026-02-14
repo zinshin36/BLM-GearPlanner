@@ -4,14 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
 
 namespace BLMRotationSim
 {
     public partial class MainWindow : Window
     {
         private Dictionary<string, List<GearPiece>> gearPool = new();
-        private string logPath = "runtime_log.txt";
+        private readonly string logPath = "runtime_log.txt";
 
         public MainWindow()
         {
@@ -33,7 +32,7 @@ namespace BLMRotationSim
 
                 if (!File.Exists(path))
                 {
-                    Log("gear.json not found!");
+                    Log("gear.json not found.");
                     MessageBox.Show("gear.json not found.");
                     return;
                 }
@@ -59,7 +58,7 @@ namespace BLMRotationSim
             }
             catch (Exception ex)
             {
-                Log("LoadGear ERROR: " + ex.Message);
+                Log("LoadGear ERROR: " + ex.ToString());
                 MessageBox.Show("Error loading gear. Check runtime_log.txt");
             }
         }
@@ -81,8 +80,8 @@ namespace BLMRotationSim
 
                 var selectedGear = new List<GearPiece>
                 {
-                    gearPool["Head"].First(g => g.Name == HeadDropdown.SelectedItem.ToString()),
-                    gearPool["Body"].First(g => g.Name == BodyDropdown.SelectedItem.ToString())
+                    gearPool["Head"].First(g => g.Name == HeadDropdown.SelectedItem!.ToString()),
+                    gearPool["Body"].First(g => g.Name == BodyDropdown.SelectedItem!.ToString())
                 };
 
                 foreach (var g in selectedGear)
@@ -100,7 +99,7 @@ namespace BLMRotationSim
             }
             catch (Exception ex)
             {
-                Log("Simulate ERROR: " + ex.Message);
+                Log("Simulate ERROR: " + ex.ToString());
                 MessageBox.Show("Simulation failed. Check runtime_log.txt");
             }
         }
@@ -115,9 +114,11 @@ namespace BLMRotationSim
         public int SpellSpeed { get; set; }
     }
 
-    static class RotationSimulator
+    public static class RotationSimulator
     {
-        const int BaseSub = 400;
-        const int LevelDiv = 1900;
+        private const int BaseSub = 400;
+        private const int LevelDiv = 1900;
 
-        public static double Calc
+        public static double CalculateDPS(int crit, int dh, int det, int sps)
+        {
+            double gcd = Calcula
