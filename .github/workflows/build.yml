@@ -22,9 +22,17 @@ jobs:
       - run: pip install -r requirements.txt
 
       - run: |
+          if (Test-Path build) { Remove-Item build -Recurse -Force }
+          if (Test-Path dist) { Remove-Item dist -Recurse -Force }
           if (Test-Path main.spec) { Remove-Item main.spec }
 
-      - run: pyinstaller --noconfirm --clean --onefile --windowed main.py
+      - run: pyinstaller --noconfirm --clean --onefile --windowed --collect-all PyQt6 main.py
+
+      - name: Verify Build
+        run: |
+          if (!(Test-Path dist/main.exe)) {
+            Write-Error "Build failed: main.exe not created"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
