@@ -1,154 +1,203 @@
 import sys
+import os
 import json
-from pathlib import Path
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QSlider, QComboBox, QCheckBox, QProgressBar, QMessageBox
+import requests
+import logging
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton,
+    QSlider, QMessageBox
 )
-from PySide6.QtCore import Qt
-from gear_cache import load_cache, refresh_gear_cache
-from tier_detector import detect_max_ilvl, filter_by_ilvl_window
-from brute_solver import solve_bis
+from PyQt6.QtCore import Qt
 
-# Constants
-CACHE_PATH = Path("data/gear_cache.json")
-ILVL_WINDOW_DEFAULT = 30
-PRIORITY_MODES = ["Crit Focus", "DH Focus", "Spell Speed Focus", "Balanced"]
+# ===============================
+# CONFIG
+# ===============================
 
-# Ensure data folder exists
-CACHE_PATH.parent.mkdir(exist_ok=True)
+API_BASE = "https://v2.xivapi.com"
+CACHE_FILE = "gear_cache.json"
+LOG_FILE = "blm_bis.log"
 
-# Create placeholder cache if missing
-if not CACHE_PATH.exists():
-    with open(CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump({"max_ilvl": 0, "theme": "Dark", "gear": []}, f, indent=2)
+# ===============================
+# LOGGING SETUP
+# ===============================
 
-class MainWindow(QMainWindow):
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logging.info("Program started")
+
+# ===============================
+# API FUNCTIONS
+# ===============================
+
+def fetch_highest_ilvl():
+    try:
+        logging.info("Detecting highest ilvl...")
+        url = f"{API_BASE}/search"
+        params = {
+            "query": "Black Mage",
+            "indexes": "Item",
+            "limit": 1,
+            "sort_field": "LevelItem",
+            "sort_order": "desc"
+        }
+
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        if "results" in data and len(data["results"]) > 0:
+            highest = data["results"][0]["LevelItem"]
+            logging.info(f"Highest ilvl detected: {highest}")
+            return highest
+
+    except Exception as e:
+        logging.error(f"Failed to detect highest ilvl: {e}")
+        return None
+
+
+def fetch_gear(ilvl_min, ilvl_max):
+    try:
+        logging.info(f"Fetching gear between {ilvl_min}-{ilvl_max}")
+        url = f"{API_BASE}/search"
+
+        params = {
+            "query": "Black Mage",
+            "indexes": "Item",
+            "limit": 100,
+            "filters": f"LevelItem>={ilvl_min},LevelItem<={ilvl_max}"
+        }
+
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+
+        results = data.get("results", [])
+
+        logging.info(f"Gear found: {len(results)}")
+        return results
+
+    except Exception as e:
+        logging.error(f"Failed to fetch gear: {e}")
+        return []
+
+
+# ===============================
+# GUI
+# ===============================
+
+class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BLM Perfect BiS Engine")
-        try:
-            self.cache = load_cache() or {"gear": [], "max_ilvl": 0, "theme": "Dark"}
-        except Exception:
-            self.cache = {"gear": [], "max_ilvl": 0, "theme": "Dark"}
+        self.setWindowTitle("BLM Perfect BiS Solver")
+        self.setGeometry(200, 200, 500, 300)
 
-        self.max_ilvl = self.cache.get("max_ilvl", 0)
-        self.theme = self.cache.get("theme", "Dark")
-        self.init_ui()
-        self.apply_theme()
+        self.layout = QVBoxLayout()
 
-    def init_ui(self):
-        main = QVBoxLayout()
+        self.label = QLabel("iLvl Range: 600 - 660")
+        self.layout.addWidget(self.label)
 
-        # Max ILvl label
-        self.label_ilvl = QLabel(f"Detected Max ILvl: {self.max_ilvl}")
-        main.addWidget(self.label_ilvl)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setMinimum(500)
+        self.slider.setMaximum(800)
+        self.slider.setValue(660)
+        self.slider.valueChanged.connect(self.update_label)
+        self.layout.addWidget(self.slider)
 
-        # ILvl window slider
-        slider_layout = QHBoxLayout()
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(5)
-        self.slider.setMaximum(60)
-        self.slider.setValue(ILVL_WINDOW_DEFAULT)
-        self.slider.valueChanged.connect(self.update_window_label)
-        self.window_label = QLabel(f"Window: {self.slider.value()}")
-        slider_layout.addWidget(self.slider)
-        slider_layout.addWidget(self.window_label)
-        main.addLayout(slider_layout)
+        self.detect_button = QPushButton("Detect Highest iLvl")
+        self.detect_button.clicked.connect(self.detect_ilvl)
+        self.layout.addWidget(self.detect_button)
 
-        # Priority dropdown
-        self.priority_dropdown = QComboBox()
-        self.priority_dropdown.addItems(PRIORITY_MODES)
-        main.addWidget(self.priority_dropdown)
+        self.refresh_button = QPushButton("Refresh Gear (Expansion)")
+        self.refresh_button.clicked.connect(self.refresh_gear)
+        self.layout.addWidget(self.refresh_button)
 
-        # Checkboxes
-        self.chk_relic = QCheckBox("Include Relic Weapons")
-        self.chk_pvp = QCheckBox("Exclude PvP Gear")
-        main.addWidget(self.chk_relic)
-        main.addWidget(self.chk_pvp)
+        self.calc_button = QPushButton("Recalculate BiS")
+        self.calc_button.clicked.connect(self.calculate_bis)
+        self.layout.addWidget(self.calc_button)
 
-        # Buttons
-        btn_layout = QHBoxLayout()
-        self.btn_refresh = QPushButton("Refresh Gear (Expansion)")
-        self.btn_refresh.clicked.connect(self.refresh_gear)
-        self.btn_calc = QPushButton("Recalculate BiS")
-        self.btn_calc.clicked.connect(self.run_solver)
-        self.btn_theme = QPushButton("Toggle Light/Dark")
-        self.btn_theme.clicked.connect(self.toggle_theme)
-        btn_layout.addWidget(self.btn_refresh)
-        btn_layout.addWidget(self.btn_calc)
-        btn_layout.addWidget(self.btn_theme)
-        main.addLayout(btn_layout)
+        self.theme_button = QPushButton("Toggle Light/Dark Mode")
+        self.theme_button.clicked.connect(self.toggle_theme)
+        self.layout.addWidget(self.theme_button)
 
-        # Progress bar and output
-        self.progress = QProgressBar()
-        main.addWidget(self.progress)
-        self.output_label = QLabel("Solver output will appear here")
-        main.addWidget(self.output_label)
+        self.setLayout(self.layout)
+        self.dark_mode = True
+        self.apply_dark_mode()
 
-        container = QWidget()
-        container.setLayout(main)
-        self.setCentralWidget(container)
+    # ===========================
 
-    def update_window_label(self):
-        self.window_label.setText(f"Window: {self.slider.value()}")
+    def update_label(self):
+        self.label.setText(f"iLvl Range: {self.slider.value()-60} - {self.slider.value()}")
+
+    def detect_ilvl(self):
+        highest = fetch_highest_ilvl()
+        if highest:
+            self.slider.setValue(highest)
+            QMessageBox.information(self, "Detected", f"Highest iLvl detected: {highest}")
+        else:
+            QMessageBox.warning(self, "Error", "Could not detect highest iLvl.")
 
     def refresh_gear(self):
         try:
-            self.output_label.setText("Refreshing gear cache...")
-            QApplication.processEvents()
-            self.cache["gear"], self.max_ilvl = refresh_gear_cache()
-            self.cache["max_ilvl"] = self.max_ilvl
-            self.label_ilvl.setText(f"Detected Max ILvl: {self.max_ilvl}")
-            self.output_label.setText(f"Loaded {len(self.cache['gear'])} gear items.")
-            self.save_cache()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to refresh gear: {e}")
-            self.output_label.setText("Error refreshing gear cache.")
-
-    def run_solver(self):
-        try:
-            self.output_label.setText("Running solver...")
-            QApplication.processEvents()
-            window = self.slider.value()
-            filtered_gear = filter_by_ilvl_window(self.cache["gear"], self.max_ilvl, window)
-            if not filtered_gear:
-                QMessageBox.warning(self, "Warning", "No gear found in the selected ILvl window.")
-                self.output_label.setText("No gear in ILvl window.")
-                return
-            priority = self.priority_dropdown.currentText()
-            best_build, best_dps = solve_bis(filtered_gear, priority)
-            if best_build:
-                out_text = f"Best DPS: {best_dps:.2f}\nGear:\n"
-                for piece in best_build:
-                    out_text += f"{piece['Slot']}: {piece['Name']}\n"
-                self.output_label.setText(out_text)
+            highest = fetch_highest_ilvl()
+            if highest:
+                gear = fetch_gear(highest-60, highest)
+                with open(CACHE_FILE, "w") as f:
+                    json.dump(gear, f, indent=2)
+                QMessageBox.information(self, "Success", "Gear refreshed successfully.")
             else:
-                self.output_label.setText("No valid build found.")
+                QMessageBox.warning(self, "Error", "Could not refresh gear.")
+
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Solver failed: {e}")
-            self.output_label.setText("Solver error.")
+            logging.error(f"Refresh error: {e}")
+            QMessageBox.critical(self, "Error", str(e))
+
+    def calculate_bis(self):
+        try:
+            if not os.path.exists(CACHE_FILE):
+                QMessageBox.warning(self, "Error", "No gear cache found. Refresh first.")
+                return
+
+            with open(CACHE_FILE, "r") as f:
+                gear = json.load(f)
+
+            if not gear:
+                QMessageBox.warning(self, "Error", "No gear found in selected ilvl window.")
+                return
+
+            # Placeholder solver logic
+            best = max(gear, key=lambda x: x.get("LevelItem", 0))
+
+            QMessageBox.information(
+                self,
+                "BiS Result",
+                f"Top Item Found:\n{best.get('Name')}\niLvl {best.get('LevelItem')}"
+            )
+
+        except Exception as e:
+            logging.error(f"BiS calculation error: {e}")
+            QMessageBox.critical(self, "Error", str(e))
 
     def toggle_theme(self):
-        self.theme = "Light" if self.theme == "Dark" else "Dark"
-        self.apply_theme()
-        self.cache["theme"] = self.theme
-        self.save_cache()
-
-    def apply_theme(self):
-        if self.theme == "Dark":
-            self.setStyleSheet("background-color:#121212;color:#FFFFFF;")
+        if self.dark_mode:
+            self.setStyleSheet("")
+            self.dark_mode = False
         else:
-            self.setStyleSheet("background-color:#FFFFFF;color:#000000;")
+            self.apply_dark_mode()
+            self.dark_mode = True
 
-    def save_cache(self):
-        try:
-            CACHE_PATH.parent.mkdir(exist_ok=True)
-            with open(CACHE_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.cache, f, indent=2)
-        except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Failed to save cache: {e}")
+    def apply_dark_mode(self):
+        self.setStyleSheet("""
+            QWidget { background-color: #1e1e1e; color: white; }
+            QPushButton { background-color: #333; padding: 6px; }
+        """)
 
+# ===============================
+# MAIN
+# ===============================
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
