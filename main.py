@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QTextEdit,
-    QMessageBox,
 )
 from solver_engine import SolverEngine
 from data_models import CharacterStats
@@ -23,7 +22,6 @@ class MainWindow(QMainWindow):
         self.setGeometry(200, 200, 650, 550)
 
         self.engine = SolverEngine()
-
         self.inputs = {}
 
         layout = QVBoxLayout()
@@ -59,8 +57,7 @@ class MainWindow(QMainWindow):
 
     def run_solver(self):
         self.output.append("Starting calculation...")
-        thread = threading.Thread(target=self.calculate)
-        thread.daemon = True
+        thread = threading.Thread(target=self.calculate, daemon=True)
         thread.start()
 
     def calculate(self):
@@ -75,13 +72,10 @@ class MainWindow(QMainWindow):
             )
 
             dps = self.engine.calculate_dps(stats)
-
             self.output.append(f"Calculated DPS: {dps}")
 
-        except ValueError:
-            self.output.append("Input error: Please enter valid integers.")
         except Exception as e:
-            self.output.append(f"Unexpected error: {str(e)}")
+            self.output.append(f"Error: {str(e)}")
 
 
 if __name__ == "__main__":
