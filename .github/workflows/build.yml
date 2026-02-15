@@ -2,42 +2,30 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
+      - run: python -m pip install --upgrade pip
 
-      - name: Install Dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Clean Previous Spec
-        run: |
+      - run: |
           if (Test-Path main.spec) { Remove-Item main.spec }
 
-      - name: Build Executable
-        run: pyinstaller --noconfirm --clean --onefile --windowed main.py
+      - run: pyinstaller --noconfirm --clean --onefile --windowed main.py
 
-      - name: Verify Build Output
-        run: |
-          if (!(Test-Path dist/main.exe)) {
-            Write-Error "Build failed: main.exe not found"
-          }
-
-      - name: Upload EXE Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ffxiv_solver_exe
           path: dist/main.exe
