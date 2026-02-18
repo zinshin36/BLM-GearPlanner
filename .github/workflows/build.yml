@@ -32,16 +32,7 @@ jobs:
           if (Test-Path main.spec) { Remove-Item main.spec }
 
       - name: Build Executable
-        run: |
-          pyinstaller ^
-            --noconfirm ^
-            --clean ^
-            --onefile ^
-            --collect-all PyQt6 ^
-            --hidden-import PyQt6.QtCore ^
-            --hidden-import PyQt6.QtGui ^
-            --hidden-import PyQt6.QtWidgets ^
-            main.py
+        run: pyinstaller --noconfirm --clean --onefile --collect-all PyQt6 --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets main.py
 
       - name: Verify EXE Exists
         run: |
